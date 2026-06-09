@@ -1,103 +1,73 @@
-/**
- * 游戏主循环
- * 管理游戏的更新和渲染循环
- */
-
-export interface GameLoopCallbacks {
+// 游戏主循环
+interface GameLoopCallbacks {
   update: (deltaTime: number) => void;
   render: () => void;
 }
 
 export class GameLoop {
-  private lastTime: number = 0;
+  private callbacks: GameLoopCallbacks;
   private isRunning: boolean = false;
-  private accumulator: number = 0;
-  private readonly timeStep: number = 1000 / 60; // 60 FPS
-  private animationFrameId: number | null = null;
+  private lastTimestamp: number = 0;
+  private targetFPS: number = 60;
+  private frameInterval: number = 1000 / 60;
+  private accumulatedTime: number = 0;
+  private maxDeltaTime: number = 100; // 防止卡顿导致的过大时间步
 
-  constructor(private callbacks: GameLoopCallbacks) {}
+  constructor(callbacks: GameLoopCallbacks) {
+    this.callbacks = callbacks;
+  }
 
-  /**
-   * 启动游戏循环
-   */
+  // 开始游戏循环
   start(): void {
     if (this.isRunning) return;
     
     this.isRunning = true;
-    this.lastTime = performance.now();
-    this.accumulator = 0;
+    this.lastTimestamp = performance.now();
+    this.accumulatedTime = 0;
     
-    this.loop(this.lastTime);
+    requestAnimationFrame(this.loop.bind(this));
   }
 
-  /**
-   * 停止游戏循环
-   */
+  // 停止游戏循环
   stop(): void {
     this.isRunning = false;
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
   }
 
-  /**
-   * 检查游戏循环是否正在运行
-   */
-  getIsRunning(): boolean {
-    return this.isRunning;
-  }
-
-  /**
-   * 游戏循环主函数
-   */
-  private loop(currentTime: number): void {
+  // 游戏循环
+  private loop(timestamp: number): void {
     if (!this.isRunning) return;
 
     // 计算时间差
-    let deltaTime = currentTime - this.lastTime;
-    this.lastTime = currentTime;
+    let deltaTime = timestamp - this.lastTimestamp;
+    this.lastTimestamp = timestamp;
 
-    // 防止时间差过大(如标签页切换后返回)
-    if (deltaTime > 1000) {
-      deltaTime = this.timeStep;
-    }
+    // 限制最大时间步，防止卡顿
+    deltaTime = Math.min(deltaTime, this.maxDeltaTime);
 
-    // 累积时间
-    this.accumulator += deltaTime;
+    // 累计时间
+    this.accumulatedTime += deltaTime;
 
     // 固定时间步长更新
-    while (this.accumulator >= this.timeStep) {
-      this.callbacks.update(this.timeStep);
-      this.accumulator -= this.timeStep;
+    while (this.accumulatedTime >= this.frameInterval) {
+      this.callbacks.update(this.frameInterval);
+      this.accumulatedTime -= this.frameInterval;
     }
 
     // 渲染
     this.callbacks.render();
 
-    // 继续下一帧
-    this.animationFrameId = requestAnimationFrame((time) => this.loop(time));
+    // 下一帧
+    requestAnimationFrame(this.loop.bind(this));
+  }
+
+  // 设置目标帧率
+  setTargetFPS(fps: number): void {
+    this.targetFPS = fps;
+    this.frameInterval = 1000 / fps;
+  }
+
+  // 检查是否正在运行
+  isActive(): boolean {
+    return this.isRunning;
   }
 }
-
-// 单例实例
-let gameLoopInstance: GameLoop | null = null;
-
-export const createGameLoop = (callbacks: GameLoopCallbacks): GameLoop => {
-  if (gameLoopInstance) {
-    gameLoopInstance.stop();
-  }
-  gameLoopInstance = new GameLoop(callbacks);
-  return gameLoopInstance;
-};
-
-export const getGameLoop = (): GameLoop | null => {
-  return gameLoopInstance;
-};
-
-export const destroyGameLoop = (): void => {
-  if (gameLoopInstance) {
-    gameLoopInstance.stop();
-    gameLoopInstance = null;
-  }
-};

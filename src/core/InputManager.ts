@@ -1,165 +1,128 @@
-/**
- * 输入管理器
- * 处理键盘输入，支持双人游戏
- */
+// 输入状态
+interface InputState {
+  left: boolean;
+  right: boolean;
+  up: boolean;
+  down: boolean;
+  attack: boolean;
+  defend: boolean;
+}
 
-import type { PlayerInput } from '@/types';
-
-// 输入映射配置
-const INPUT_MAP = {
-  player1: {
-    left: ['KeyA', 'ArrowLeft'],
-    right: ['KeyD', 'ArrowRight'],
-    up: ['KeyW', 'ArrowUp'],
-    down: ['KeyS', 'ArrowDown'],
-    attack: ['Space', 'KeyZ'],
-    defend: ['KeyS', 'ArrowDown'],
-  },
-  player2: {
-    left: ['Numpad4', 'KeyJ'],
-    right: ['Numpad6', 'KeyL'],
-    up: ['Numpad8', 'KeyI'],
-    down: ['Numpad5', 'KeyK'],
-    attack: ['Numpad0', 'KeyU', 'Enter'],
-    defend: ['Numpad5', 'KeyK', 'ArrowDown'],
-  },
+// 按键映射
+const KEY_MAP: Record<string, { playerId: string; action: keyof InputState }> = {
+  // 玩家1 - WASD
+  'KeyA': { playerId: 'player1', action: 'left' },
+  'KeyD': { playerId: 'player1', action: 'right' },
+  'KeyW': { playerId: 'player1', action: 'up' },
+  'KeyS': { playerId: 'player1', action: 'down' },
+  'KeyJ': { playerId: 'player1', action: 'attack' },
+  'KeyK': { playerId: 'player1', action: 'defend' },
+  
+  // 玩家2 - 方向键
+  'ArrowLeft': { playerId: 'player2', action: 'left' },
+  'ArrowRight': { playerId: 'player2', action: 'right' },
+  'ArrowUp': { playerId: 'player2', action: 'up' },
+  'ArrowDown': { playerId: 'player2', action: 'down' },
+  'Numpad1': { playerId: 'player2', action: 'attack' },
+  'Digit1': { playerId: 'player2', action: 'attack' },
+  'Numpad2': { playerId: 'player2', action: 'defend' },
+  'Digit2': { playerId: 'player2', action: 'defend' },
 };
 
 export class InputManager {
-  private keys: Map<string, boolean> = new Map();
-  private keysPressed: Map<string, boolean> = new Map();
-  private keysReleased: Map<string, boolean> = new Map();
-  private isEnabled: boolean = true;
+  private inputs: Map<string, InputState> = new Map();
+  private pressedKeys: Set<string> = new Set();
+  private justPressedKeys: Set<string> = new Set();
+  private justReleasedKeys: Set<string> = new Set();
 
   constructor() {
+    // 初始化玩家输入状态
+    this.inputs.set('player1', this.createDefaultInputState());
+    this.inputs.set('player2', this.createDefaultInputState());
+
+    // 绑定事件
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleKeyUp = this.handleKeyUp.bind(this);
-    
+
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
   }
 
-  /**
-   * 销毁输入管理器，清理事件监听
-   */
-  destroy(): void {
-    window.removeEventListener('keydown', this.handleKeyDown);
-    window.removeEventListener('keyup', this.handleKeyUp);
-    this.keys.clear();
-    this.keysPressed.clear();
-    this.keysReleased.clear();
-  }
-
-  /**
-   * 启用/禁用输入
-   */
-  setEnabled(enabled: boolean): void {
-    this.isEnabled = enabled;
-    if (!enabled) {
-      this.keys.clear();
-      this.keysPressed.clear();
-      this.keysReleased.clear();
-    }
-  }
-
-  /**
-   * 处理按键按下
-   */
-  private handleKeyDown(event: KeyboardEvent): void {
-    if (!this.isEnabled) return;
-    
-    // 防止默认行为(如空格滚动页面)
-    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
-      event.preventDefault();
-    }
-
-    const code = event.code;
-    
-    // 记录按键按下(用于检测单击)
-    if (!this.keys.get(code)) {
-      this.keysPressed.set(code, true);
-    }
-    
-    this.keys.set(code, true);
-  }
-
-  /**
-   * 处理按键释放
-   */
-  private handleKeyUp(event: KeyboardEvent): void {
-    if (!this.isEnabled) return;
-    
-    const code = event.code;
-    
-    this.keys.set(code, false);
-    this.keysReleased.set(code, true);
-  }
-
-  /**
-   * 检查按键是否按下
-   */
-  isKeyDown(code: string): boolean {
-    return !!this.keys.get(code);
-  }
-
-  /**
-   * 检查按键是否刚刚按下(单击检测)
-   */
-  isKeyPressed(code: string): boolean {
-    return !!this.keysPressed.get(code);
-  }
-
-  /**
-   * 检查按键是否刚刚释放
-   */
-  isKeyReleased(code: string): boolean {
-    return !!this.keysReleased.get(code);
-  }
-
-  /**
-   * 获取玩家的输入状态
-   */
-  getPlayerInput(playerId: 'player1' | 'player2'): PlayerInput {
-    const map = INPUT_MAP[playerId];
-    
+  private createDefaultInputState(): InputState {
     return {
-      left: map.left.some(k => this.isKeyDown(k)),
-      right: map.right.some(k => this.isKeyDown(k)),
-      up: map.up.some(k => this.isKeyPressed(k)),
-      down: map.down.some(k => this.isKeyDown(k)),
-      attack: map.attack.some(k => this.isKeyPressed(k)),
-      defend: map.defend.some(k => this.isKeyDown(k)),
+      left: false,
+      right: false,
+      up: false,
+      down: false,
+      attack: false,
+      defend: false,
     };
   }
 
-  /**
-   * 更新输入状态(每帧调用)
-   * 清除按键按下/释放状态
-   */
+  private handleKeyDown(event: KeyboardEvent): void {
+    const key = event.code;
+    
+    if (!this.pressedKeys.has(key)) {
+      this.pressedKeys.add(key);
+      this.justPressedKeys.add(key);
+      
+      // 更新玩家输入状态
+      const mapping = KEY_MAP[key];
+      if (mapping) {
+        const playerInput = this.inputs.get(mapping.playerId);
+        if (playerInput) {
+          playerInput[mapping.action] = true;
+        }
+      }
+    }
+  }
+
+  private handleKeyUp(event: KeyboardEvent): void {
+    const key = event.code;
+    
+    this.pressedKeys.delete(key);
+    this.justReleasedKeys.add(key);
+    
+    // 更新玩家输入状态
+    const mapping = KEY_MAP[key];
+    if (mapping) {
+      const playerInput = this.inputs.get(mapping.playerId);
+      if (playerInput) {
+        playerInput[mapping.action] = false;
+      }
+    }
+  }
+
+  // 获取玩家输入状态
+  getPlayerInput(playerId: string): InputState | undefined {
+    return this.inputs.get(playerId);
+  }
+
+  // 检查按键是否按下
+  isKeyDown(key: string): boolean {
+    return this.pressedKeys.has(key);
+  }
+
+  // 检查按键是否刚被按下（只在按下的一帧返回true）
+  isKeyJustPressed(key: string): boolean {
+    return this.justPressedKeys.has(key);
+  }
+
+  // 检查按键是否刚被释放（只在释放的一帧返回true）
+  isKeyJustReleased(key: string): boolean {
+    return this.justReleasedKeys.has(key);
+  }
+
+  // 更新输入状态（每帧调用）
   update(): void {
-    this.keysPressed.clear();
-    this.keysReleased.clear();
+    // 清空刚按下和刚释放的按键集合
+    this.justPressedKeys.clear();
+    this.justReleasedKeys.clear();
   }
-};
 
-// 单例实例
-let inputManagerInstance: InputManager | null = null;
-
-export const createInputManager = (): InputManager => {
-  if (inputManagerInstance) {
-    inputManagerInstance.destroy();
+  // 销毁（清理事件监听）
+  destroy(): void {
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
   }
-  inputManagerInstance = new InputManager();
-  return inputManagerInstance;
-};
-
-export const getInputManager = (): InputManager | null => {
-  return inputManagerInstance;
-};
-
-export const destroyInputManager = (): void => {
-  if (inputManagerInstance) {
-    inputManagerInstance.destroy();
-    inputManagerInstance = null;
-  }
-};
+}
